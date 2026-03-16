@@ -120,3 +120,13 @@ class Bullet(GameObject):
 
     def move(self, surface):
         self.position += self.velocity    
+
+class PowerUp(GameObject):
+
+    def __init__(self, position, type):
+        sprite = pygame.transform.scale(
+                load_sprite(f"powerup_{type}"), (20, 20)
+            )
+        super().__init__(position, sprite, Vector2(0, 1))
+
+        self.type = type

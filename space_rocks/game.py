@@ -3,7 +3,7 @@ import random
 import sys
 from pygame.math import Vector2
 from utils import load_sprite, get_random_velocity, get_formatted_time, load_sounds
-from models import Spaceship, Asteroid, Bullet
+from models import Spaceship, Asteroid, Bullet, PowerUp
 
 class SpaceRocks:
     MIN_ASTEROID_DISTANCE = 250
@@ -19,17 +19,30 @@ class SpaceRocks:
         og_background = load_sprite("space_bck", False)
         self.background = pygame.transform.scale(og_background, (800, 600))
         
-        # Start the game in a "Waiting" state
-        self.spaceship = None
-        self.asteroids = []
-        self.bullets = []
-        self.message = "Press ENTER to Start"
+        # Start the game in a "Waiting" state 
+        self.message = "Welcome Player!! Press ENTER to Start"
         self.start_time = 0
-        self.last_spwan_time = 0
         self.score = 0
-        self.spawn_interval = 3000
+
+        self.spaceship = None
+        self.bullets = []
+
+        # asteroid
+        self.asteroids = []
+        self.last_ast_spwan_time = 0
+        self.ast_spawn_interval = 3000
         self.asteroid_min_speed = 1
         self.asteroid_max_speed = 3
+
+        # power up
+        self.power_up = []
+        self.active_powerup_type = ""
+        self.power_up_expiry = 0
+        self.last_power_up_spawn_time = 0
+        self.power_up_spawn_interval = 15000
+        self.power_up_lasts_interval = 5000
+
+        # sound
         self.start_sound = load_sounds("igotthis")
         self.diss_sound = load_sounds("disappointed")
         self.die_sound = load_sounds("fahh")
@@ -53,13 +66,16 @@ class SpaceRocks:
         self.message = ""
         self.bullets = []
         self.asteroids = []
+        self.power_up = []
         self.start_time = pygame.time.get_ticks()
 
         # reset
-        self.last_spwan_time = self.start_time
-        self.spawn_interval = 3000
+        self.last_ast_spwan_time = self.start_time
+        self.ast_spawn_interval = 3000
         self.asteroid_min_speed = 1
         self.asteroid_max_speed = 3
+        self.power_up_expiry = 0
+        self.last_power_up_spawn_time = 0
         self.score = 0
         
         for _ in range(10):
@@ -108,6 +124,8 @@ class SpaceRocks:
                 self.spaceship.accelerate(move_dir.normalize(), current_time, self.start_time)
 
     def _process_game_logic(self):
+        current_time = pygame.time.get_ticks()
+
         # Bullet movement and removal
         for bullet in self.bullets[:]:
             bullet.move(self.screen)
@@ -118,6 +136,22 @@ class SpaceRocks:
         # Asteroid movement
         for asteroid in self.asteroids:
             asteroid.move(self.screen)
+        
+        # Power up deswapn
+        if current_time > self.last_power_up_spawn_time + self.power_up_lasts_interval:
+            self.power_up.clear()
+
+        # Power up spawn
+        if current_time > self.last_power_up_spawn_time + self.power_up_lasts_interval:
+            powerup_postion = Vector2(random.randrange(800), random.randrange(600))
+                
+            # rondom selection of power up
+            t = random.randint(0,1)
+            if t == 1:
+                self.power_up.append(PowerUp(powerup_postion, 'penetration'))
+
+            self.last_power_up_spawn_time = current_time
+        
 
         # Bullet-Asteroid collision
         for asteroid in self.asteroids[:]:
@@ -125,22 +159,46 @@ class SpaceRocks:
                 if bullet.position.distance_to(asteroid.position) < asteroid.radius:
                     self.score += 1
                     self.blast_sound.play()
-                    if self.score > 20 and self.score % 5 == 0:
-                        self.wow_sound.play()
-                    if asteroid in self.asteroids: self.asteroids.remove(asteroid)
-                    if bullet in self.bullets: self.bullets.remove(bullet)
+                    self.asteroids.remove(asteroid)
+                    
+                    is_penetrating = (self.active_powerup_type == "penetration" and current_time < self.power_up_expiry)
+                    
+                    if not is_penetrating:
+                        if bullet in self.bullets:
+                            self.bullets.remove(bullet)
                     break
         
+        # Spaceship-Asteroid Collision 
+        if self.spaceship:
+            for asteroid in self.asteroids:
+                if asteroid.collision_with(self.spaceship):
+                    # Play random death sound
+                    sounds = [self.diss_sound, self.die_sound, self.bruh_sound]
+                    random.choice(sounds).play()
+
+                    final_time = get_formatted_time(self.start_time)
+                    self.spaceship = None 
+                    self.message = f"GAME OVER! Score: {self.score} | Time: {final_time}"
+                    break
+
+        # Spaceship-PowerUp Collision 
+        if self.spaceship: 
+            for p in self.power_up[:]:
+                if self.spaceship.collision_with(p):
+                    self.active_powerup_type = p.type 
+                    self.power_up_expiry = current_time + self.power_up_lasts_interval
+                    self.power_up.remove(p)
+                    self.wow_sound.play()
+
         # Spaceship logic (Only if it exists)
         if self.spaceship:
             self.spaceship.rotate_to_mouse()
             self.spaceship.update()
             self.spaceship.move(self.screen)
 
-            current_ticks = pygame.time.get_ticks()
-            elapsed_ms = current_ticks - self.start_time
-            
-            if current_ticks - self.last_spwan_time > self.spawn_interval:
+            # Asteroid Scaling
+            elapsed_ms = current_time - self.start_time
+            if current_time - self.last_ast_spwan_time > self.ast_spawn_interval:
                 if elapsed_ms < 4000:
                     spawn_count = 1
                 else:
@@ -151,32 +209,15 @@ class SpaceRocks:
                 for _ in range(spawn_count):
                     self.add_asteroid()
                 
-                self.last_spwan_time = current_ticks
+                self.last_ast_spwan_time = current_time
 
-                # increase spawn rate
-                if self.spawn_interval > 1200:
-                    self.spawn_interval -= 100
+                # Gradually increase difficulty
+                if self.ast_spawn_interval > 1200:
+                    self.ast_spawn_interval -= 100
                 
                 if self.asteroid_max_speed < 10:
                     self.asteroid_min_speed += 0.05
-                    self.asteroid_max_speed += 0.1
-
-            # Spaceship-asteroid collision
-            for asteroid in self.asteroids:
-                if asteroid.collision_with(self.spaceship):
-                    i = random.randint(1,3)
-                    print(f"Random sound chosen: {i}")
-                    if i == 1:
-                        self.diss_sound.play()
-                    elif i == 2: 
-                        self.die_sound.play()
-                    else :
-                        self.bruh_sound.play()
-
-                    final_time = get_formatted_time(self.start_time)
-                    self.spaceship = None
-                    self.message = f"GAME OVER! Score: {self.score} | Time: {final_time}"
-                    break
+                    self.asteroid_max_speed += 0.1           
 
     def _draw(self):
         self.screen.blit(self.background, (0,0))
@@ -188,14 +229,25 @@ class SpaceRocks:
             time_str = get_formatted_time(self.start_time)
             text_time = self.ui_font.render(f"Time: {time_str}", True, (255, 255, 255))
             text_score = self.ui_font.render(f"Score: {self.score}", True, (255, 255, 255))
-            self.screen.blit(text_score, (10, 40))
+            
+            status = "None"
+            if pygame.time.get_ticks() < self.power_up_expiry:
+                status = self.active_powerup_type
+            
+            power_up_str = self.ui_font.render(f"Active: {status}", True, (255, 255, 255))
+            
             self.screen.blit(text_time, (10, 10))
+            self.screen.blit(text_score, (10, 40))
+            self.screen.blit(power_up_str, (650, 10))
          
         for asteroid in self.asteroids:
             asteroid.draw(self.screen)
         
         for bullet in self.bullets:
             bullet.draw(self.screen)
+        
+        for p in self.power_up:
+            p.draw(self.screen) 
         
         # Render message text
         if self.message:
