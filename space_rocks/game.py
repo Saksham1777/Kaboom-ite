@@ -20,7 +20,7 @@ class SpaceRocks:
         self.background = pygame.transform.scale(og_background, (800, 600))
         
         # Start the game in a "Waiting" state 
-        self.message = "Welcome Player!! Press ENTER to Start"
+        self.message = "Welcome Player!! Press ENTER"
         self.start_time = 0
         self.score = 0
 
@@ -39,7 +39,7 @@ class SpaceRocks:
         self.active_powerup_type = ""
         self.power_up_expiry = 0
         self.last_power_up_spawn_time = 0
-        self.power_up_spawn_interval = 15000
+        self.power_up_spawn_interval = 20000
         self.power_up_lasts_interval = 5000
 
         # sound
@@ -143,13 +143,14 @@ class SpaceRocks:
 
         # Power up spawn
         if current_time > self.last_power_up_spawn_time + self.power_up_lasts_interval:
-            powerup_postion = Vector2(random.randrange(800), random.randrange(600))
+            powerup_postion = Vector2(random.randint(100, 700), random.randint(100, 500))
                 
-            # rondom selection of power up
-            t = random.randint(0,1)
-            if t == 1:
-                self.power_up.append(PowerUp(powerup_postion, 'penetration'))
+            # Random selection of power up
+            types = ['penetration', 'shield']
+            selected_type = random.choice(types)
 
+            self.power_up.append(PowerUp(powerup_postion, selected_type))
+            
             self.last_power_up_spawn_time = current_time
         
 
@@ -172,14 +173,22 @@ class SpaceRocks:
         if self.spaceship:
             for asteroid in self.asteroids:
                 if asteroid.collision_with(self.spaceship):
-                    # Play random death sound
-                    sounds = [self.diss_sound, self.die_sound, self.bruh_sound]
-                    random.choice(sounds).play()
+                    
+                    is_shield_active = (self.active_powerup_type == "shield" and current_time < self.power_up_expiry)
 
-                    final_time = get_formatted_time(self.start_time)
-                    self.spaceship = None 
-                    self.message = f"GAME OVER! Score: {self.score} | Time: {final_time}"
-                    break
+                    if not is_shield_active:
+                        # Play random death sound
+                        sounds = [self.diss_sound, self.die_sound, self.bruh_sound]
+                        random.choice(sounds).play()
+
+                        final_time = get_formatted_time(self.start_time)
+                        self.spaceship = None 
+                        self.message = f"GAME OVER! Score: {self.score} | Time: {final_time}"
+                        break
+                    else:
+                        self.asteroids.remove(asteroid)
+                        self.blast_sound.play()
+                        # Allowing multi hit shield
 
         # Spaceship-PowerUp Collision 
         if self.spaceship: 
